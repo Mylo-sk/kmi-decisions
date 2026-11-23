@@ -48,7 +48,12 @@ def main():
 
     print("2. DOES VAR MAKE IT BETTER?")
     print(f"   Correct before VAR: {pct(d['onfield_correct'].sum(), n)}   "
-          f"after VAR: {pct(d['final_correct'].sum(), n)}")
+          f"after VAR: {pct(d['final_correct'].sum(), n)}  (the decision that actually stood)")
+    # The Premier League's own "after VAR" figure also counts wrong calls that VAR was right to
+    # leave alone ("not clear and obvious") as correct. Same data, different question.
+    pl_style = d["final_correct"] | d["wrong_but_left_alone"]
+    print(f"   Premier League's way of counting: {pct(pl_style.sum(), n)} "
+          f"(counts the 'not clear and obvious' wrong calls as correct)")
     ov = d[d["overturned"]]
     print(f"   VAR overturned {len(ov)} decisions; the panel backed {ov['var_correct'].sum()} of them")
     print(f"   Of the {wrong} wrong calls on the pitch:")
