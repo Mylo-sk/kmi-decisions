@@ -30,8 +30,14 @@ def main():
     # The decision that actually stood after VAR: the referee's call, unless VAR overturned it,
     # in which case it is right only if the panel backed the overturn.
     d["final_correct"] = d["onfield_correct"].where(~d["overturned"], d["var_correct"])
-    # Wrong on the pitch, not overturned, and the panel says VAR should have stepped in.
-    d["missed_by_var"] = (~d["onfield_correct"]) & (~d["overturned"]) & d["var_outcome"].str.startswith("Incorrect")
+    # Wrong on the pitch, not overturned, and the panel says the VAR outcome was wrong. That covers
+    # two different failures, and only the commentary tells them apart:
+    not_fixed = (~d["onfield_correct"]) & (~d["overturned"]) & d["var_outcome"].str.startswith("Incorrect")
+    #  - VAR rightly sent the referee to the monitor, and the referee kept the wrong call (R10-012).
+    #    Wording may change in future rounds, so check new cases by eye.
+    d["rejected_at_monitor"] = not_fixed & d["commentary"].str.contains("after the on-field review", case=False)
+    #  - VAR should have stepped in and didn't.
+    d["missed_by_var"] = not_fixed & ~d["rejected_at_monitor"]
     # Wrong on the pitch, but the panel says VAR was right NOT to step in ("not clear and obvious").
     d["wrong_but_left_alone"] = (~d["onfield_correct"]) & (~d["overturned"]) & d["var_correct"]
 
@@ -61,6 +67,7 @@ def main():
     print(f"     fixed by VAR:                          {(wrong_calls['overturned'] & wrong_calls['var_correct']).sum()}")
     print(f"     VAR stepped in but still got it wrong:  {(wrong_calls['overturned'] & ~wrong_calls['var_correct']).sum()}")
     print(f"     missed by VAR (should have acted):      {d['missed_by_var'].sum()}")
+    print(f"     sent to the monitor, wrong call kept:   {d['rejected_at_monitor'].sum()}")
     print(f"     left alone, 'not clear and obvious':    {d['wrong_but_left_alone'].sum()}")
     print(f"     VAR not allowed to review (2nd yellow): {(wrong_calls['var_overturn'] == 'N/A').sum()}\n")
 
@@ -96,6 +103,38 @@ def main():
                                         wrong=("onfield_correct", lambda s: (~s).sum()))
     for club, r in per_club.sort_values(["wrong", "incidents"], ascending=False).iterrows():
         print(f"   {club:24} {r['wrong']:>2} wrong of {r['incidents']:>2} incidents")
+    print()
+
+    print("7. WHEN VAR OVERTURNS A CALL: FACT OR OPINION?")
+    # The PL labels measurable overturns 'factual' (offside lines, ball out of play, handball by
+    # the scorer). Everything else is VAR swapping the referee's judgement for its own. The panel's
+    # vote on the VAR call shows how settled each kind really is. Unlabelled overturns count as
+    # judgement calls.
+    ov = d[d["overturned"]].copy()
+    ov["factual"] = ov["var_outcome"].str.contains("factual", case=False)
+    for label, g in [("Factual", ov[ov["factual"]]), ("Judgement calls", ov[~ov["factual"]])]:
+        split_vote = ~g["var_votes"].isin(UNANIMOUS)
+        close_vote = g["var_votes"].isin({"3:2", "2:3"})
+        print(f"   {label:16} {len(g):>2} overturns: panel split on {split_vote.sum()} "
+              f"({pct(split_vote.sum(), len(g))}), {close_vote.sum()} of them 3:2")
+    for _, r in ov[~ov["factual"] & ~ov["var_votes"].isin(UNANIMOUS)].iterrows():
+        print(f"     {r['incident_id']}  {r['home_team']} v {r['away_team']}: "
+              f"{r['decision_type']} overturned, panel {r['var_votes']}")
+    print()
+
+    print("8. VAR'S OWN ERRORS, AND HOW OBVIOUS THEY WERE")
+    # A unanimous panel (5:0 or 0:5 on the VAR call) = all five experts saw it. Those are the
+    # 'how did they not see that?' moments that wreck trust.
+    errs = d[d["missed_by_var"] | d["rejected_at_monitor"] | (d["overturned"] & ~d["var_correct"])].copy()
+    errs["kind"] = "missed"
+    errs.loc[errs["rejected_at_monitor"], "kind"] = "kept at monitor"
+    errs.loc[errs["overturned"], "kind"] = "wrong overturn"
+    obvious = errs["var_votes"].isin(UNANIMOUS)
+    print(f"   {len(errs)} VAR errors; the panel was unanimous on {obvious.sum()}")
+    for _, r in errs.iterrows():
+        print(f"     {r['incident_id']}  {r['home_team']} v {r['away_team']}, {r['time']}: "
+              f"{r['decision_type']}  [{r['kind']}, panel {r['var_votes']}"
+              f"{', unanimous' if r['var_votes'] in UNANIMOUS else ''}]")
 
 
 if __name__ == "__main__":
