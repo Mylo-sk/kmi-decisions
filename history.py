@@ -216,6 +216,9 @@ def this_season():
         "onfield_errors_referee": (~onfield_ok & (d["official"] == "Referee")).sum(),
         "onfield_errors_ar": (~onfield_ok & (d["official"] == "Assistant Referee")).sum(),
         "onfield_errors_not_for_var": left_alone.sum(),
+        # Plain counts, for charts that show the parts rather than the percentages.
+        "incidents": len(d),
+        "decisions_stood_correct": stood_ok.sum(),
     }
     return int(d["round"].max()), {k: float(v) for k, v in values.items()}
 
